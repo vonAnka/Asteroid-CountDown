@@ -257,6 +257,15 @@ COLOR_PROMPT = (200, 200, 210)
 MOON_RADIUS = 300                # pixlar
 MOON_ROTATE_SPEED = 0.0045       # radianer/frame
 
+# Fyrverkeri pa highscore-skarmen (samma stil som tunga vapnets, FIREWORK_COUNT/
+# FIREWORK_VMAX ovan) -- rent dekorativt, egen partikelfysik i skarm-pixlar
+# (paverkar ingen sand). Triggas nar man kommer tillbaka fran game over.
+TITLE_FIREWORK_BURSTS = 4        # antal smaseldar i firandet
+TITLE_FIREWORK_STAGGER = 18      # frames mellan varje brist (~0.3s @60fps)
+TITLE_FIREWORK_GRAVITY = 0.22    # pixlar/frame^2
+TITLE_FIREWORK_DRAG = 0.993
+TITLE_FIREWORK_LIFETIME = 70     # frames innan en partikel slocknar
+
 # --- Ljud ---
 SFX_VOLUME = 0.8
 MUSIC_VOLUME = 0.55

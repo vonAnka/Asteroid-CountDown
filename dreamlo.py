@@ -1,8 +1,19 @@
-"""Global topplista via Dreamlo (http://dreamlo.com). Fungerar i webblasaren
-(pygbag/pyodide, via pyfetch) och pa desktop (via urllib, i en bakgrundstrad
-sa spelloopen inte fryser). Allt ar best-effort: strular natverket, nycklarna
-eller svaret fran Dreamlo kraschar spelet ALDRIG -- funktionerna returnerar
-bara None/gor inget, och main.py faller tillbaka pa den lokala topplistan.
+"""Global topplista via Dreamlo (http://dreamlo.com). Fungerar pa desktop via
+urllib (i en bakgrundstrad sa spelloopen inte fryser) och i webblasaren via
+pygbags EGNA (odokumenterade) JS-bro -- INTE pyodide.http.pyfetch, som visade
+sig sakna helt i pygbags runtime (dess "pyodide compat layer" ar bara en stub
+som loggar "N/I"). pygbag byter ut sjalva stdlib-modulen `platform` mot en
+JS-interop-shim nar koden kors under emscripten (samma modul anvands av
+pygbags egen bootstrap for att t.ex. ladda numpy/pygame-ce via dlopen), med
+`platform.window` (rå JS window-objekt) och `platform.jsiter` (kor en JS-
+generatorfunktion till den ar klar och hamtar sista yield som resultat).
+Vi installerar en liten JS-fetch-generator via `platform.window.eval(...)`
+och kor den via `platform.jsiter`, exakt samma monster pygbag sjalv anvander
+internt (support/cross/aio/fetch.py) -- fast med ett fix sa ett natverksfel
+faktiskt avslutar generatorn istallet for att hanga polling-loopen for evigt.
+
+Allt ar best-effort: strular natverket, nycklarna eller svaret fran Dreamlo
+kraschar spelet ALDRIG -- funktionerna returnerar bara None/gor inget.
 
 Nycklarna las fran .env (publicCode/privateCode, INTE incheckad i git).
 pygbags webbygge hoppar over dotfiler (.env skulle saknas i webblasaren), sa
@@ -13,11 +24,40 @@ uppdateras infor nasta pygbag-bygge."""
 
 import asyncio
 import json
-import sys
+import platform          # pa desktop: vanlig stdlib-modul. Under pygbag/emscripten:
+import sys                # bytt mot en JS-interop-shim (platform.window, .jsiter).
 import urllib.parse
 import urllib.request
 
 TIMEOUT = 5
+_IS_BROWSER = sys.platform == "emscripten"
+_js_installed = False
+
+_FETCH_JS = """
+window.DreamloFetch = window.DreamloFetch || {};
+window.DreamloFetch.get = function* (url) {
+    var content = 'undefined';
+    fetch(new Request(url, { method: 'GET' }))
+        .then(resp => resp.text())
+        .then(text => { content = text; })
+        .catch(err => { content = ''; });   // avslutar pollingen aven om fetch misslyckas
+    while (content == 'undefined') {
+        yield;
+    }
+    yield content;
+};
+"""
+
+
+async def _browser_fetch_text(url):
+    """Hamtar url som text via pygbags JS-bro (se moduldocstring). Kastar vid
+    fel/timeout -- anroparen fangar."""
+    global _js_installed
+    if not _js_installed:
+        platform.window.eval(_FETCH_JS)
+        _js_installed = True
+    return await asyncio.wait_for(
+        platform.jsiter(platform.window.DreamloFetch.get(url)), timeout=TIMEOUT)
 
 
 def _read_env(path=".env"):
@@ -57,7 +97,7 @@ def _sync_keys_file(keys, path="dreamlo_keys.py"):
 
 
 def _load_keys():
-    if sys.platform != "emscripten":
+    if not _IS_BROWSER:
         env = _read_env()
         if env:
             _sync_keys_file(env)
@@ -98,10 +138,9 @@ async def get_scores_dreamlo():
         return None
     url = f"http://dreamlo.com/lb/{PUBLIC_KEY}/json"
     try:
-        if sys.platform == "emscripten":
-            from pyodide.http import pyfetch
-            response = await pyfetch(url)
-            data = await response.json()
+        if _IS_BROWSER:
+            text = await _browser_fetch_text(url)
+            data = json.loads(text)
         else:
             def _blocking():
                 with urllib.request.urlopen(url, timeout=TIMEOUT) as resp:
@@ -120,9 +159,8 @@ async def save_score_dreamlo(player_name, score):
     name = urllib.parse.quote(str(player_name))
     url = f"http://dreamlo.com/lb/{PRIVATE_KEY}/add/{name}/{int(score)}"
     try:
-        if sys.platform == "emscripten":
-            from pyodide.http import pyfetch
-            await pyfetch(url)
+        if _IS_BROWSER:
+            await _browser_fetch_text(url)
         else:
             def _blocking():
                 with urllib.request.urlopen(url, timeout=TIMEOUT) as resp:

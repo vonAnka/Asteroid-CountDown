@@ -44,10 +44,12 @@ from config import (
     HG_GRILLE_Y, HG_LOSE_Y, COLOR_GRILLE,
     COLOR_TEXT, COLOR_HUD_BG, COLOR_DANGER, COLOR_HEIGHTMAP,
     COLOR_SCENE_TOP, COLOR_SCENE_BOTTOM, COLOR_FRAME, BACKGROUND_IMAGE,
-    COLOR_RETICLE, COLOR_EXPLOSION, COLOR_GAMEOVER, COLOR_WALL,
+    COLOR_RETICLE, COLOR_EXPLOSION, COLOR_GAMEOVER, COLOR_WALL, COLOR_FIREWORK,
     MAX_NAME_LEN, HIGHSCORE_WHEEL_STEP, INSTRUCTIONS_IMAGE,
     COLOR_TITLE, COLOR_TITLE_BIG, COLOR_HIGHSCORE_NAME, COLOR_HIGHSCORE_SCORE, COLOR_PROMPT,
     MOON_RADIUS, MOON_ROTATE_SPEED,
+    TITLE_FIREWORK_BURSTS, TITLE_FIREWORK_STAGGER, TITLE_FIREWORK_GRAVITY,
+    TITLE_FIREWORK_DRAG, TITLE_FIREWORK_LIFETIME,
 )
 from sand import SandSim
 from car import Car
@@ -103,6 +105,8 @@ async def main():
     highscores = []     # visas bara nar Dreamlo faktiskt svarat -- inga lokala defaults
     name_input = ""
     scroll_y = 0.0
+    title_fireworks = []      # aktiva fyrverkeripartiklar pa highscore-skarmen
+    pending_fireworks = []    # [frames_kvar, x, y] -- fordrojda brister (staggered)
 
     def reset():
         nonlocal car, score
@@ -117,6 +121,16 @@ async def main():
         booms.append([x, y, age, maxr])
         if explosion:
             sound.play_explosion()
+
+    def celebrate_highscore():
+        """Fyrverkeri (som tunga vapnets) pa highscore-skarmen -- ett litet
+        firande nar man kommer tillbaka dit efter game over."""
+        cx = WINDOW_W // 2
+        for i in range(TITLE_FIREWORK_BURSTS):
+            x = random.uniform(cx - 300, cx + 300)
+            y = random.uniform(140, 460)
+            delay = i * TITLE_FIREWORK_STAGGER + random.randint(0, 10)
+            pending_fireworks.append([delay, x, y])
 
     async def refresh_global_highscores():
         """Hamtar den globala Dreamlo-listan i bakgrunden (paverkar inte
@@ -163,6 +177,7 @@ async def main():
                         asyncio.ensure_future(submit_score_and_refresh(final_name, score))
                         name_input = ""
                         state = STATE_TITLE
+                        celebrate_highscore()
                     elif event.key == pygame.K_BACKSPACE:
                         name_input = name_input[:-1]
                     elif event.unicode and (event.unicode.isalnum() or event.unicode == " ") \
@@ -305,8 +320,19 @@ async def main():
 
         if state == STATE_TITLE:
             moon_angle += MOON_ROTATE_SPEED
+            still_pending = []
+            for pf in pending_fireworks:
+                pf[0] -= 1
+                if pf[0] <= 0:
+                    _burst_title_firework(title_fireworks, pf[1], pf[2])
+                else:
+                    still_pending.append(pf)
+            pending_fireworks[:] = still_pending
+            _update_title_fireworks(title_fireworks)
+
             screen.blit(menu_background, (0, 0))
             scroll_y = _draw_title_screen(screen, font, big_font, highscores, scroll_y, moon, moon_angle)
+            _draw_title_fireworks(screen, title_fireworks)
         elif state == STATE_INSTRUCTIONS:
             screen.blit(menu_background, (0, 0))
             _draw_instructions_screen(screen, font, big_font, instructions_img)
@@ -570,6 +596,36 @@ def _draw_laser(screen, beam):
         pygame.draw.line(screen, (255, 255, 255), a, b, 1)
         pygame.draw.circle(screen, (255, 220, 160), (bx, by), 6, 2)
         pygame.draw.circle(screen, (255, 255, 255), (bx, by), 3)   # brännpunkt
+
+
+def _burst_title_firework(particles, x, y):
+    """Slunga ut partiklar at alla hall fran (x, y) -- skarm-pixel-variant av
+    sand.burst() (tunga vapnets fyrverkeri), fast rent dekorativ (ingen sand)."""
+    for _ in range(FIREWORK_COUNT):
+        ang = random.uniform(0.0, 2.0 * math.pi)
+        sp = FIREWORK_VMAX * CELL * random.uniform(0.4, 1.0)
+        particles.append([x, y, math.cos(ang) * sp, math.sin(ang) * sp, 0])
+
+
+def _update_title_fireworks(particles):
+    """Enkel gravitation/luftmotstand + faller bort med aldern."""
+    alive = []
+    for x, y, vx, vy, age in particles:
+        vy += TITLE_FIREWORK_GRAVITY
+        vx *= TITLE_FIREWORK_DRAG
+        x += vx
+        y += vy
+        age += 1
+        if age < TITLE_FIREWORK_LIFETIME and y < WINDOW_H + 40:
+            alive.append([x, y, vx, vy, age])
+    particles[:] = alive
+
+
+def _draw_title_fireworks(screen, particles):
+    for x, y, _, _, age in particles:
+        fade = max(0.0, 1.0 - age / TITLE_FIREWORK_LIFETIME)
+        col = tuple(max(0, min(255, int(c * fade))) for c in COLOR_FIREWORK)
+        pygame.draw.circle(screen, col, (int(x), int(y)), 2)
 
 
 def _draw_booms(screen, booms):
