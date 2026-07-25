@@ -19,3 +19,7 @@ Thumbs.db
 # Temp
 *.log
 *.tmp
+
+#Keys and secrets
+.env
+dreamlo_keys.py

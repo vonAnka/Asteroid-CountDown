@@ -66,8 +66,10 @@ COLOR_SCENE_TOP = (12, 14, 28)       # rymd upptill
 COLOR_SCENE_BOTTOM = (28, 22, 30)    # mörkare nedtill
 COLOR_FRAME = (120, 92, 60)          # timglasets träram (topp/botten-kapsel + stolpar)
 
-# Lägg en fil här (t.ex. assets/background.png) för att byta ut gradienten senare.
-BACKGROUND_IMAGE = "assets/background.png"
+# Bakgrund i SPELLÄGET (spelande + game over). Skalas/croppas ("cover") sa den
+# tacker hela fonstret utan att snedvridas. Start-/instruktionsskarmarna
+# anvander alltid gradienten (COLOR_SCENE_TOP/BOTTOM), inte denna bild.
+BACKGROUND_IMAGE = "assets/images/bg.png"
 
 COLOR_CAR_BODY = (210, 70, 60)
 COLOR_CAR_CABIN = (120, 200, 235)
@@ -109,9 +111,9 @@ MISSILE_LIFETIME = 110    # frames innan missilen försvinner
 # kind: "missile" (projektil), "lob" (langsam ballistisk, detonerar vid framkomst),
 #       "laser" (kontinuerlig strale som smaltar/delar)
 WEAPONS = [
-    {"namn": "KULSPRUTA", "kind": "missile", "skada": 2, "cd": 4, "fart": 3.7,
+    {"namn": "MACHINE GUN", "kind": "missile", "skada": 2, "cd": 4, "fart": 3.7,
      "r": 0.9, "blast": 5, "aoe": 0, "recoil": 0.7, "farg": (150, 220, 255)},
-    {"namn": "TUNG",      "kind": "lob", "cd": 60, "fart": 1.15, "blast": 22,
+    {"namn": "HEAVY",     "kind": "lob", "cd": 60, "fart": 1.15, "blast": 22,
      "dmg": 22, "aoe": 22, "recoil": 2.2, "farg": (255, 150, 80)},
     {"namn": "LASER",     "kind": "laser", "range": 240, "recoil": 0.0,
      "farg": (255, 80, 120)},
@@ -240,3 +242,36 @@ HG_LOSE_Y = 120           # rod linje nara ladans topp: nar sanden nar hit ar de
 HG_LOSE_FRAC = 0.78       # andel av ladans volym som ska vara fylld -> game over
                           # (~0.78 = ladan ser full ut; over ~0.8 fylls sista % langsamt)
 COLOR_GRILLE = (120, 128, 140)   # gallret dar tanken kor
+
+# --- Start-/topplistskarm + game over-namninmatning ---
+MAX_NAME_LEN = 10                # max antal tecken i spelarnamnet
+HIGHSCORE_WHEEL_STEP = 40        # pixlar per mushjuls-klick nar man scrollar listan for hand
+INSTRUCTIONS_IMAGE = "assets/instructions.png"   # bild som forklarar kontrollerna
+COLOR_TITLE = (255, 210, 90)
+COLOR_TITLE_BIG = (110, 210, 255)   # "COUNT DOWN" -- annan farg an "HIGH SCORE"
+COLOR_HIGHSCORE_NAME = (230, 230, 235)
+COLOR_HIGHSCORE_SCORE = (255, 210, 90)
+COLOR_PROMPT = (200, 200, 210)
+
+# Roterande man bakom topplistan (globe.py) pa startskarmen.
+MOON_RADIUS = 300                # pixlar
+MOON_ROTATE_SPEED = 0.0045       # radianer/frame
+
+# --- Ljud ---
+SFX_VOLUME = 0.8
+MUSIC_VOLUME = 0.55
+
+EXPLOSION_SOUNDS = [
+    "assets/sound-fx/explo-1.ogg",
+    "assets/sound-fx/explo-2.ogg",
+    "assets/sound-fx/explo-3.ogg",
+    "assets/sound-fx/explo-4.ogg",
+]
+GUN_SOUND = "assets/sound-fx/gun.ogg"
+LASER_SOUND = "assets/sound-fx/laser.ogg"
+MELT_SOUND = "assets/sound-fx/melt.ogg"
+RELOAD_SOUND = "assets/sound-fx/reload.ogg"
+
+MENU_MUSIC = "assets/sound-music/menu-track.ogg"
+GAMEPLAY_MUSIC = "assets/sound-music/gameplay-track.ogg"
+GAMEOVER_MUSIC = "assets/sound-music/game-over.ogg"

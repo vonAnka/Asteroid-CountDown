@@ -45,13 +45,24 @@ from config import (
     COLOR_TEXT, COLOR_HUD_BG, COLOR_DANGER, COLOR_HEIGHTMAP,
     COLOR_SCENE_TOP, COLOR_SCENE_BOTTOM, COLOR_FRAME, BACKGROUND_IMAGE,
     COLOR_RETICLE, COLOR_EXPLOSION, COLOR_GAMEOVER, COLOR_WALL,
+    MAX_NAME_LEN, HIGHSCORE_WHEEL_STEP, INSTRUCTIONS_IMAGE,
+    COLOR_TITLE, COLOR_TITLE_BIG, COLOR_HIGHSCORE_NAME, COLOR_HIGHSCORE_SCORE, COLOR_PROMPT,
+    MOON_RADIUS, MOON_ROTATE_SPEED,
 )
 from sand import SandSim
 from car import Car
 from asteroids import AsteroidField
 from weapons import Weapons
+import sound
+import dreamlo
+import globe
 
 SIM_RECT = (VIEW_X, VIEW_Y, SIM_W, SIM_H)
+
+STATE_TITLE = "title"                # topplista + "press enter to start game"
+STATE_INSTRUCTIONS = "instructions"  # bild som forklarar kontrollerna
+STATE_PLAYING = "playing"
+STATE_GAMEOVER = "gameover"          # namninmatning + poang
 
 
 def _spawn_car():
@@ -66,13 +77,18 @@ def _mouse_cell():
 
 async def main():
     pygame.init()
+    sound.init()
     screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
     pygame.display.set_caption("Count down — Missile Command")
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 24)
     big_font = pygame.font.Font(None, 64)
 
-    background = _make_background()
+    menu_background = _make_gradient_background()
+    game_background = _make_game_background(menu_background)
+    instructions_img = _load_optional_image(INSTRUCTIONS_IMAGE, (WINDOW_W - 80, WINDOW_H - 160))
+    moon = globe.Globe(MOON_RADIUS, globe.generate_moon_texture())
+    moon_angle = 0.0
 
     sand = SandSim(GRID_W, GRID_H)
     sand.build_timeglass()
@@ -81,18 +97,44 @@ async def main():
     weapons = Weapons()
     booms = []         # [x, y, age, maxr]      -> explosionsringar
     show_heightmap = False
-    game_over = False
     score = 0
 
+    state = STATE_TITLE
+    highscores = []     # visas bara nar Dreamlo faktiskt svarat -- inga lokala defaults
+    name_input = ""
+    scroll_y = 0.0
+
     def reset():
-        nonlocal car, game_over, score
+        nonlocal car, score
         sand.clear()
         car = _spawn_car()
         field.reset()
         weapons.reset()
         booms.clear()
-        game_over = False
         score = 0
+
+    def boom(x, y, age, maxr, explosion=True):
+        booms.append([x, y, age, maxr])
+        if explosion:
+            sound.play_explosion()
+
+    async def refresh_global_highscores():
+        """Hamtar den globala Dreamlo-listan i bakgrunden (paverkar inte
+        spelloopen). Misslyckas det (natverk nere, inga nycklar) behalls den
+        lokala listan som redan visas."""
+        nonlocal highscores
+        data = await dreamlo.get_scores_dreamlo()
+        if data is not None:
+            highscores = data
+
+    async def submit_score_and_refresh(name, score_value):
+        """Sparar poangen globalt, hamtar sedan om listan sa den nya
+        placeringen syns (den lokala listan har redan uppdaterats optimistiskt
+        av anroparen, sa detta bara bekraftar/synkar mot Dreamlo)."""
+        await dreamlo.save_score_dreamlo(name, score_value)
+        await refresh_global_highscores()
+
+    asyncio.ensure_future(refresh_global_highscores())
 
     running = True
     while running:
@@ -100,39 +142,74 @@ async def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.MOUSEWHEEL and state == STATE_TITLE:
+                scroll_y -= event.y * HIGHSCORE_WHEEL_STEP
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_r:
-                    reset()
-                elif event.key == pygame.K_h:
-                    show_heightmap = not show_heightmap
-                elif event.key == pygame.K_w:
-                    jump = True
-                elif event.key == pygame.K_1:
-                    weapons.switch(0)
-                elif event.key == pygame.K_2:
-                    weapons.switch(1)
-                elif event.key == pygame.K_3:
-                    weapons.switch(2)
+                elif state == STATE_TITLE:
+                    if event.key == pygame.K_RETURN:
+                        sound.play_reload()
+                        state = STATE_INSTRUCTIONS
+                elif state == STATE_INSTRUCTIONS:
+                    if event.key == pygame.K_RETURN:
+                        sound.play_reload()
+                        reset()
+                        state = STATE_PLAYING
+                elif state == STATE_GAMEOVER:
+                    if event.key == pygame.K_RETURN:
+                        sound.play_reload()
+                        final_name = name_input.strip() or "PLAYER"
+                        asyncio.ensure_future(submit_score_and_refresh(final_name, score))
+                        name_input = ""
+                        state = STATE_TITLE
+                    elif event.key == pygame.K_BACKSPACE:
+                        name_input = name_input[:-1]
+                    elif event.unicode and (event.unicode.isalnum() or event.unicode == " ") \
+                            and len(name_input) < MAX_NAME_LEN:
+                        name_input += event.unicode.upper()
+                elif state == STATE_PLAYING:
+                    if event.key == pygame.K_r:
+                        reset()
+                    elif event.key == pygame.K_h:
+                        show_heightmap = not show_heightmap
+                    elif event.key == pygame.K_w:
+                        jump = True
+                    elif event.key == pygame.K_1:
+                        weapons.switch(0)
+                    elif event.key == pygame.K_2:
+                        weapons.switch(1)
+                    elif event.key == pygame.K_3:
+                        weapons.switch(2)
+
+        if state == STATE_TITLE or state == STATE_INSTRUCTIONS:
+            sound.play_menu_music()
+        elif state == STATE_PLAYING:
+            sound.play_gameplay_music()
+        elif state == STATE_GAMEOVER:
+            sound.play_gameover_music()
 
         keys = pygame.key.get_pressed()
         mbtn = pygame.mouse.get_pressed()
-        want_anchor = keys[pygame.K_SPACE] and not game_over
+        want_anchor = keys[pygame.K_SPACE] and state == STATE_PLAYING
         mx_cell, my_cell = _mouse_cell()
 
         drive = keys[pygame.K_d] - keys[pygame.K_a]      # gas (ignoreras när förankrad)
         rotate = keys[pygame.K_e] - keys[pygame.K_q]     # luftrotation (Q/E)
 
         laser_beam = None
-        if not game_over:
+        laser_active = False
+        melt_active = False
+        if state == STATE_PLAYING:
             wp = weapons.weapon()
             mzx, mzy, mdx, mdy = car.muzzle()
             if mbtn[0]:
                 if wp["kind"] == "missile":
-                    if weapons.fire(mzx, mzy, mzx + mdx * 30, mzy + mdy * 30) \
-                            and not car.is_anchored():
-                        car.recoil(mdx, mdy, RECOIL_FORCE * wp["recoil"] * (1.0 - car.deploy))
+                    fired = weapons.fire(mzx, mzy, mzx + mdx * 30, mzy + mdy * 30)
+                    if fired:
+                        sound.play_gun()
+                        if not car.is_anchored():
+                            car.recoil(mdx, mdy, RECOIL_FORCE * wp["recoil"] * (1.0 - car.deploy))
                 elif wp["kind"] == "lob":                # tungt: langsam ballistisk missil
                     if weapons.launch_shell(mzx, mzy, mx_cell, my_cell) \
                             and not car.is_anchored():
@@ -141,8 +218,10 @@ async def main():
                         car.recoil(ddx / dd, ddy / dd,
                                    RECOIL_FORCE * wp["recoil"] * (1.0 - car.deploy))
                 elif wp["kind"] == "laser":              # strale: haller varme i voxeln (glod)
-                    (hx, hy), warm = field.laser_beam(mzx, mzy, mdx, mdy, wp["range"])
+                    laser_active = True
+                    (hx, hy), warm, hit = field.laser_beam(mzx, mzy, mdx, mdy, wp["range"])
                     laser_beam = (mzx, mzy, hx, hy, wp["farg"], warm)
+                    melt_active = hit
             # test: spraya sand med hoger mus
             if mbtn[2]:
                 sand.add_blob(int(mx_cell), int(my_cell), 4)
@@ -151,7 +230,7 @@ async def main():
             sand.step()
             field.update()
             for (kx, ky, kr) in field.update_heat():         # laser-varme smalter/delar
-                booms.append([kx, ky, 0, kr * 3.0]); score += 1
+                boom(kx, ky, 0, kr * 3.0); score += 1
             ground = sand.ground_height()
 
             conversions, car_hits = field.resolve(ground, car)
@@ -159,7 +238,7 @@ async def main():
                 car.flash = CAR_FLASH_FRAMES                 # blinka rott (feedback)
                 car.knock((1.0 if car.x >= hx else -1.0) * min(1.4, hr * 0.12),
                           10)                                # puttar/stunnar, ingen HP
-                booms.append([hx, hy, 0, hr * 3.5])
+                boom(hx, hy, 0, hr * 3.5)
                 # stor krater runt tanken
                 cgx = min(GRID_W - 1, max(0, int(car.x)))
                 cgy = int(car.y + car.ride)
@@ -170,7 +249,7 @@ async def main():
                 iy = int(ground[ix])
                 frac = ar / AST_MAX_R
                 # (asteroidens voxlar blir obsidiansand i field.resolve)
-                booms.append([ax, iy, 0, ar * 6.0])          # stor explosion
+                boom(ax, iy, 0, ar * 6.0)                    # stor explosion
                 # krater (lokal) + horisontell vag over planen
                 rad = SHOCK_RADIUS_BASE + ar
                 sand.displace(ix, iy, rad, SHOCK_SAND_THROW, SHOCK_MAX_DISPLACE)
@@ -186,14 +265,14 @@ async def main():
             for ev in weapons.update(field):                 # missil-/granatträffar
                 if ev[0] == "kill":                          # sanden = asteroidens voxlar
                     _, kx, ky, kr, blast = ev
-                    booms.append([kx, ky, 0, kr * 3.0 + blast * 0.6])
+                    boom(kx, ky, 0, kr * 3.0 + blast * 0.6)
                     score += 1
                 elif ev[0] == "boom":                        # tung granat detonerade
                     _, bx, by, blast = ev
-                    booms.append([bx, by, 0, blast * 1.1])
+                    boom(bx, by, 0, blast * 1.1)
                     sand.burst(bx, by, FIREWORK_COUNT, FIREWORK_VMAX, FIREWORK)
-                else:                                        # chip: träff som grävde in
-                    booms.append([ev[1], ev[2], 8, 2.2])
+                else:                                        # chip: träff som grävde in (ingen explosion)
+                    boom(ev[1], ev[2], 8, 2.2, explosion=False)
 
             car.update(ground, sand, drive, rotate, jump, want_anchor,
                        (mx_cell, my_cell))
@@ -208,11 +287,14 @@ async def main():
                               SHOCK_SAND_THROW, SHOCK_MAX_DISPLACE)
                 sand.add_shockwave(cx, SHOCK_WAVE_STRENGTH * st,
                                    SHOCK_WAVE_REACH * st, OBSIDIAN)
-                booms.append([cx, cy, 0, 8 * st + 4])
+                boom(cx, cy, 0, 8 * st + 4)
 
             # nedrakningen: nedre kammaren har fyllts upp till forlust-linjen
             if sand.countdown_frac() >= 1.0:
-                game_over = True
+                state = STATE_GAMEOVER
+
+        sound.set_laser_active(laser_active)
+        sound.set_melt_active(melt_active)
 
         for b in booms:
             b[2] += 1
@@ -220,26 +302,35 @@ async def main():
 
         # --- rendering ---
         score = sand.count_color_sand()                  # poang = antal COLOR_SAND-voxlar
-        screen.blit(background, (0, 0))
-        sand.render_to(screen, SIM_RECT)
-        sand.draw_particles(screen)
-        _draw_grille(screen, sand)                       # gallret dar tanken kor
-        _draw_countdown_line(screen)                    # forlust-linjen i nedre kammaren
-        if show_heightmap:
-            _draw_heightmap(screen, sand)
-        field.draw(screen)
-        weapons.draw(screen)
-        if laser_beam is not None:
-            _draw_laser(screen, laser_beam)
-        _draw_booms(screen, booms)
-        car.draw(screen)
-        if not game_over:
-            _draw_reticle(screen, car, mx_cell, my_cell)
-        _draw_frame(screen)
-        _draw_countdown(screen, font, sand)             # nedrakningsmatare
-        _draw_hud(screen, font, clock, sand, car, field, weapons, score, show_heightmap)
-        if game_over:
-            _draw_gameover(screen, big_font, font)
+
+        if state == STATE_TITLE:
+            moon_angle += MOON_ROTATE_SPEED
+            screen.blit(menu_background, (0, 0))
+            scroll_y = _draw_title_screen(screen, font, big_font, highscores, scroll_y, moon, moon_angle)
+        elif state == STATE_INSTRUCTIONS:
+            screen.blit(menu_background, (0, 0))
+            _draw_instructions_screen(screen, font, big_font, instructions_img)
+        else:                                             # PLAYING eller GAMEOVER
+            screen.blit(game_background, (0, 0))
+            sand.render_to(screen, SIM_RECT)
+            sand.draw_particles(screen)
+            _draw_grille(screen, sand)                     # gallret dar tanken kor
+            _draw_countdown_line(screen)                  # forlust-linjen i nedre kammaren
+            if show_heightmap:
+                _draw_heightmap(screen, sand)
+            field.draw(screen)
+            weapons.draw(screen)
+            if laser_beam is not None:
+                _draw_laser(screen, laser_beam)
+            _draw_booms(screen, booms)
+            car.draw(screen)
+            if state == STATE_PLAYING:
+                _draw_reticle(screen, car, mx_cell, my_cell)
+            _draw_frame(screen)
+            _draw_countdown(screen, font, sand)           # nedrakningsmatare
+            _draw_hud(screen, font, clock, sand, car, field, weapons, score, show_heightmap)
+            if state == STATE_GAMEOVER:
+                _draw_gameover(screen, big_font, font, score, name_input)
 
         pygame.display.flip()
         clock.tick(FPS_TARGET)
@@ -248,14 +339,9 @@ async def main():
     pygame.quit()
 
 
-def _make_background():
-    """Scen-bakgrund. Laddar BACKGROUND_IMAGE om den finns, annars en vertikal
-    gradient (rymd upptill -> mörkare nedtill) som placeholder."""
-    try:
-        img = pygame.image.load(BACKGROUND_IMAGE).convert()
-        return pygame.transform.scale(img, (WINDOW_W, WINDOW_H))
-    except Exception:
-        pass
+def _make_gradient_background():
+    """Vertikal gradient (rymd upptill -> mörkare nedtill). Anvands pa
+    start-/instruktionsskarmarna, och som fallback om BACKGROUND_IMAGE saknas."""
     bg = pygame.Surface((WINDOW_W, WINDOW_H))
     t0, b0 = COLOR_SCENE_TOP, COLOR_SCENE_BOTTOM
     for y in range(WINDOW_H):
@@ -265,6 +351,147 @@ def _make_background():
                int(t0[2] + (b0[2] - t0[2]) * t))
         pygame.draw.line(bg, col, (0, y), (WINDOW_W, y))
     return bg
+
+
+def _make_game_background(fallback):
+    """Bakgrund i sjalva spelläget: laddar BACKGROUND_IMAGE, croppar bort ev.
+    transparent kant runt konstverket och skalar/croppar ("cover", ingen
+    snedvridning) sa den tacker hela fonstret. Faller tillbaka till gradienten
+    om filen saknas."""
+    try:
+        raw = pygame.image.load(BACKGROUND_IMAGE).convert_alpha()
+        content = raw.subsurface(raw.get_bounding_rect()).copy()
+        return _cover_scale(content, (WINDOW_W, WINDOW_H)).convert()
+    except Exception:
+        return fallback
+
+
+def _cover_scale(img, size):
+    """Skalar bilden UTAN att snedvrida den sa den tacker hela `size`, och
+    croppar centrerat det som sticker ut. Nearest-neighbor-skalning (inte
+    smoothscale) sa den pixliga konststilen forblir skarp."""
+    tw, th = size
+    iw, ih = img.get_size()
+    scale = max(tw / iw, th / ih)
+    sw, sh = max(1, round(iw * scale)), max(1, round(ih * scale))
+    scaled = pygame.transform.scale(img, (sw, sh))
+    out = pygame.Surface(size, pygame.SRCALPHA)
+    out.blit(scaled, ((tw - sw) // 2, (th - sh) // 2))
+    return out
+
+
+def _load_optional_image(path, max_size=None):
+    """Laddar en bild om den finns, annars None (anropare visar en fallback).
+    Skalas ner (aldrig upp) sa den ryms inom max_size."""
+    try:
+        img = pygame.image.load(path).convert_alpha()
+    except Exception:
+        return None
+    if max_size is not None:
+        mw, mh = max_size
+        if img.get_width() > mw or img.get_height() > mh:
+            scale = min(mw / img.get_width(), mh / img.get_height())
+            img = pygame.transform.smoothscale(
+                img, (max(1, int(img.get_width() * scale)), max(1, int(img.get_height() * scale))))
+    return img
+
+
+def _blink(period_ms=500):
+    return (pygame.time.get_ticks() // period_ms) % 2 == 0
+
+
+def _pixel_text(text, size, color, block=4):
+    """Rendera text i en grov "pixel art"-stil: anvander det inbyggda
+    typsnittet (funkar overallt, aven i webblasaren -- inget beroende av
+    OS-typsnitt), och pixlar den genom att skala ner och sedan upp igen med
+    nearest-neighbor (INTE smoothscale) sa kanterna blir grova block."""
+    font = pygame.font.Font(None, size)
+    raw = font.render(text, False, color)      # antialias=False -> rena, harda pixlar
+    w, h = raw.get_size()
+    small = pygame.transform.scale(raw, (max(1, w // block), max(1, h // block)))
+    return pygame.transform.scale(small, (w, h))
+
+
+def _draw_title_screen(screen, font, big_font, highscores, scroll_y, moon, moon_angle):
+    """Startskarm: roterande man bakom en topplista man kan scrolla for hand
+    (mushjul) -- ENDAST om listan inte ryms, och den stannar vid topp/botten
+    (ingen auto-scroll, ingen loop). Returnerar det (ev. clampade) scroll_y sa
+    anroparen kan spara tillbaka det klampade vardet."""
+    panel = pygame.Rect(WINDOW_W // 2 - 220, 230, 440, WINDOW_H - 230 - 130)
+
+    frame = moon.render(moon_angle)
+    moon_surf = pygame.surfarray.make_surface(frame.transpose(1, 0, 2))
+    moon_surf.set_colorkey(globe.COLORKEY)
+    screen.blit(moon_surf, moon_surf.get_rect(center=panel.center))
+
+    title = _pixel_text("COUNT DOWN", 88, COLOR_TITLE_BIG, block=7)
+    screen.blit(title, (WINDOW_W // 2 - title.get_width() // 2, 55))
+    heading = _pixel_text("HIGH SCORE", 44, COLOR_TITLE, block=4)
+    screen.blit(heading, (WINDOW_W // 2 - heading.get_width() // 2, 168))
+
+    panel_fill = pygame.Surface(panel.size, pygame.SRCALPHA)
+    panel_fill.fill((*COLOR_HUD_BG, 120))          # halvgenomskinlig -- manen skiner igenom
+    screen.blit(panel_fill, panel.topleft)
+    pygame.draw.rect(screen, COLOR_FRAME, panel, 2)
+
+    entries = highscores or [{"name": "NO SCORES YET", "score": 0}]
+    line_h = 34
+    pad = 10
+    total_h = len(entries) * line_h
+    visible_h = panel.height - 2 * pad
+    max_scroll = max(0, total_h - visible_h)       # 0 om allt ryms -> ingen scroll mojlig
+    scroll_y = max(0, min(scroll_y, max_scroll))
+
+    screen.set_clip(panel)
+    y0 = panel.top + pad - scroll_y
+    for i, entry in enumerate(entries):
+        y = y0 + i * line_h
+        if y < panel.top - line_h or y > panel.bottom:
+            continue
+        rank_s = font.render(f"{i + 1:02d}.", True, COLOR_PROMPT)
+        name_s = font.render(str(entry.get("name", "???")), True, COLOR_HIGHSCORE_NAME)
+        score_s = font.render(str(entry.get("score", 0)), True, COLOR_HIGHSCORE_SCORE)
+        screen.blit(rank_s, (panel.left + 16, y))
+        screen.blit(name_s, (panel.left + 64, y))
+        screen.blit(score_s, (panel.right - 16 - score_s.get_width(), y))
+    screen.set_clip(None)
+
+    if _blink():
+        prompt = font.render("PRESS ENTER TO START GAME", True, COLOR_TEXT)
+        screen.blit(prompt, (WINDOW_W // 2 - prompt.get_width() // 2, WINDOW_H - 90))
+
+    return scroll_y
+
+
+def _draw_instructions_screen(screen, font, big_font, img):
+    """Kontrollskarm: visar en bild (assets/instructions.png) om den finns,
+    annars en textlista sa skarmen fungerar aven innan bilden ar klar."""
+    if img is not None:
+        rect = img.get_rect(center=(WINDOW_W // 2, WINDOW_H // 2 - 20))
+        screen.blit(img, rect)
+    else:
+        header = big_font.render("CONTROLS", True, COLOR_TITLE)
+        screen.blit(header, (WINDOW_W // 2 - header.get_width() // 2, 90))
+        lines = [
+            "A / D                    accelerate left / right",
+            "Left/Right arrow         rotate in the air",
+            "W                        jump",
+            "SPACE (hold)             deploy stabilizers -> shooting mode",
+            "LEFT MOUSE               shoot / aim with mouse",
+            "RIGHT MOUSE              spray sand (test)",
+            "1 / 2 / 3                switch weapon",
+            "H                        toggle height map",
+            "R                        reset / restart",
+        ]
+        y = 200
+        for text in lines:
+            surf = font.render(text, True, COLOR_TEXT)
+            screen.blit(surf, (WINDOW_W // 2 - surf.get_width() // 2, y))
+            y += 34
+
+    if _blink():
+        prompt = font.render("PRESS ENTER TO BEGIN", True, COLOR_TEXT)
+        screen.blit(prompt, (WINDOW_W // 2 - prompt.get_width() // 2, WINDOW_H - 60))
 
 
 def _draw_frame(screen):
@@ -300,7 +527,7 @@ def _draw_countdown(screen, font, sand):
     col = COLOR_DANGER if frac > 0.75 else (210, 180, 90)
     pygame.draw.rect(screen, col, (x, y, int(w * frac), h))
     pygame.draw.rect(screen, (20, 20, 24), (x, y, w, h), 2)
-    label = font.render("NEDRAKNING %d%%" % int(frac * 100), True, COLOR_TEXT)
+    label = font.render("COUNTDOWN %d%%" % int(frac * 100), True, COLOR_TEXT)
     screen.blit(label, (x + 6, y - 1))
 
 
@@ -354,23 +581,36 @@ def _draw_booms(screen, booms):
         pygame.draw.circle(screen, COLOR_EXPLOSION, (px, py), max(1, rad), 2)
 
 
-def _draw_gameover(screen, big_font, font):
+def _draw_gameover(screen, big_font, font, score, name_input):
     t1 = big_font.render("GAME OVER", True, COLOR_GAMEOVER)
-    t2 = font.render("Tryck R for att starta om", True, COLOR_TEXT)
-    screen.blit(t1, (WINDOW_W // 2 - t1.get_width() // 2, WINDOW_H // 2 - 40))
-    screen.blit(t2, (WINDOW_W // 2 - t2.get_width() // 2, WINDOW_H // 2 + 20))
+    t2 = font.render(f"SCORE: {score}", True, COLOR_TEXT)
+    screen.blit(t1, (WINDOW_W // 2 - t1.get_width() // 2, WINDOW_H // 2 - 110))
+    screen.blit(t2, (WINDOW_W // 2 - t2.get_width() // 2, WINDOW_H // 2 - 50))
+
+    box_w, box_h = 260, 40
+    box = pygame.Rect(WINDOW_W // 2 - box_w // 2, WINDOW_H // 2, box_w, box_h)
+    pygame.draw.rect(screen, COLOR_HUD_BG, box)
+    pygame.draw.rect(screen, COLOR_FRAME, box, 2)
+    label = font.render("NAME:", True, COLOR_TEXT)
+    screen.blit(label, (box.left - label.get_width() - 10, box.top + 10))
+    cursor = "_" if _blink(300) else ""
+    name_s = font.render(name_input + cursor, True, COLOR_TEXT)
+    screen.blit(name_s, (box.left + 10, box.top + 8))
+
+    t3 = font.render("Press ENTER to save & continue", True, COLOR_TEXT)
+    screen.blit(t3, (WINDOW_W // 2 - t3.get_width() // 2, box.bottom + 24))
 
 
 def _draw_hud(screen, font, clock, sand, car, field, weapons, score, show_heightmap):
-    state = ("OMKULL" if car.stunned > 0 else
-             "SKJUTKLAR" if car.deploy >= 0.999 else
-             "FORANKRAR" if car.deploy > 0.02 else
-             "LUFT" if not car.on_ground else "MARK")
+    state = ("DOWN" if car.stunned > 0 else
+             "READY" if car.deploy >= 0.999 else
+             "ANCHORING" if car.deploy > 0.02 else
+             "AIR" if not car.on_ground else "GROUND")
     lines = [
-        f"POANG (sand): {score:5d}   FPS: {clock.get_fps():4.0f}",
-        f"Asteroider: {len(field.list):3d}   Bil: {state}",
-        f"Vapen: {weapons.weapon()['namn']}  [1/2/3]",
-        "A/D=gas Q/E=rot W=hopp SPACE=forankra LMUS=skjut R=omstart",
+        f"SCORE (sand): {score:5d}   FPS: {clock.get_fps():4.0f}",
+        f"Asteroids: {len(field.list):3d}   Car: {state}",
+        f"Weapon: {weapons.weapon()['namn']}  [1/2/3]",
+        "A/D=drive Q/E=rotate W=jump SPACE=anchor LMOUSE=shoot R=restart",
     ]
     pad = 6
     surfs = [font.render(t, True, COLOR_TEXT) for t in lines]

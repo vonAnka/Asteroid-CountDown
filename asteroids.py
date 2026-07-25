@@ -366,7 +366,9 @@ class AsteroidField:
         """Skjut lasern: hitta forsta FASTA voxeln langs stralen och hall varme dar
         (+ grannar, avtar med avstand; sma asteroider varms snabbare). Smaltningen
         sker sen i update_heat nar voxeln blivit varm nog. Returnerar
-        (stralens andpunkt, warm) dar warm 0..1 = traffvoxelns varme mot smaltpunkt."""
+        (stralens andpunkt, warm, hit) dar warm 0..1 = traffvoxelns varme mot
+        smaltpunkt, och hit = True om stralen faktiskt trafffar en voxel (till
+        skillnad fran att bara warm==0 rakar galla, t.ex. precis vid traff)."""
         cands = []
         for a in self.list:
             t = (a.x - x0) * dx + (a.y - y0) * dy
@@ -387,9 +389,9 @@ class AsteroidField:
                     lx = int(px - a.x + a.cl); ly = int(py - a.y + a.cl)
                     warm = (min(1.0, a.heat[ly, lx] / LASER_MELT)
                             if (0 <= ly < a.D and 0 <= lx < a.D) else 0.0)
-                    return (px, py), warm
+                    return (px, py), warm, True
                 t += 0.5
-        return (x0 + dx * rng, y0 + dy * rng), 0.0
+        return (x0 + dx * rng, y0 + dy * rng), 0.0, False
 
     def update_heat(self):
         """Kyl/smalt varje asteroids fysiska varme. Smaltfronten kan skara av
