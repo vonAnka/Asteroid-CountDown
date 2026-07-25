@@ -22,4 +22,4 @@ Thumbs.db
 
 #Keys and secrets
 .env
-dreamlo_keys.py
+plassion_keys.py

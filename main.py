@@ -56,7 +56,7 @@ from car import Car
 from asteroids import AsteroidField
 from weapons import Weapons
 import sound
-import dreamlo
+import plassion
 import globe
 
 SIM_RECT = (VIEW_X, VIEW_Y, SIM_W, SIM_H)
@@ -133,19 +133,18 @@ async def main():
             pending_fireworks.append([delay, x, y])
 
     async def refresh_global_highscores():
-        """Hamtar den globala Dreamlo-listan i bakgrunden (paverkar inte
+        """Hamtar den globala Plassion-listan i bakgrunden (paverkar inte
         spelloopen). Misslyckas det (natverk nere, inga nycklar) behalls den
         lokala listan som redan visas."""
         nonlocal highscores
-        data = await dreamlo.get_scores_dreamlo()
+        data = await plassion.get_scores_plassion()
         if data is not None:
             highscores = data
 
     async def submit_score_and_refresh(name, score_value):
         """Sparar poangen globalt, hamtar sedan om listan sa den nya
-        placeringen syns (den lokala listan har redan uppdaterats optimistiskt
-        av anroparen, sa detta bara bekraftar/synkar mot Dreamlo)."""
-        await dreamlo.save_score_dreamlo(name, score_value)
+        placeringen syns."""
+        await plassion.save_score_plassion(name, score_value)
         await refresh_global_highscores()
 
     asyncio.ensure_future(refresh_global_highscores())
@@ -672,13 +671,14 @@ def _draw_hud(screen, font, clock, sand, car, field, weapons, score, show_height
     surfs = [font.render(t, True, COLOR_TEXT) for t in lines]
     w = max(s.get_width() for s in surfs) + pad * 2
     h = sum(s.get_height() for s in surfs) + pad * 2
+    box_x, box_y = 4, WINDOW_H - h - 4    # nedre vansterhornet -- ur vagen for asteroiderna
     bg = pygame.Surface((w, h))
     bg.set_alpha(160)
     bg.fill(COLOR_HUD_BG)
-    screen.blit(bg, (4, 4))
-    y = 4 + pad
+    screen.blit(bg, (box_x, box_y))
+    y = box_y + pad
     for s in surfs:
-        screen.blit(s, (4 + pad, y))
+        screen.blit(s, (box_x + pad, y))
         y += s.get_height()
 
 

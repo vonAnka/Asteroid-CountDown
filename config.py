@@ -3,7 +3,7 @@ prestandabudgeten i webbläsaren."""
 
 # --- Rutnät (simuleringens upplösning) ---
 GRID_W = 240          # sandceller i bredd
-GRID_H = 190          # sandceller i höjd (storre fonster, mer himmel i ovre halvan)
+GRID_H = 200          # sandceller i höjd (storre fonster, mer himmel i ovre halvan)
 CELL = 4              # skärmpixlar per cell (visuell uppskalning)
 
 # Simulerings-boxen (timglasets renderyta)
@@ -12,8 +12,8 @@ SIM_H = GRID_H * CELL   # 600
 
 # --- Viewport: timglaset ligger en bit in i fönstret, med marginal för bakgrund/scen ---
 VIEW_MARGIN_X = 100
-VIEW_MARGIN_TOP = 70
-VIEW_MARGIN_BOTTOM = 90
+VIEW_MARGIN_TOP = 20
+VIEW_MARGIN_BOTTOM = 10
 VIEW_X = VIEW_MARGIN_X                                   # sim-boxens vänsterkant i fönstret
 VIEW_Y = VIEW_MARGIN_TOP                                 # sim-boxens överkant i fönstret
 
@@ -209,7 +209,7 @@ COLOR_GAMEOVER = (255, 90, 80)
 BOX_GLASS = 2             # sidovaggarnas tjocklek (aven asteroidernas studsvaggar)
 BOX_FLOOR = 3             # golvtjocklek (gammalt platt lage)
 SAND_SPAWN_Y = 20         # dar burst-sand/asteroider regnar in uppifran
-LOSE_Y = 30               # backstop for gamla platta laget (oanvant i timglaset)
+LOSE_Y = 20               # backstop for gamla platta laget (oanvant i timglaset)
 CAR_HIT_R = 8.0           # traffradie asteroid mot tanken
 COLOR_DANGER = (230, 70, 70)
 COLOR_GROUND = (90, 78, 60)   # golv/mark
@@ -224,10 +224,10 @@ COLOR_HP_BG = (40, 44, 40)
 # ner i nedre bulben, som ar spelets nedrakning. Nar sanden dar nar HG_LOSE_Y ->
 # game over. Poang = antal COLOR_SAND-voxlar (sand fran nedskjutna asteroider).
 HG_WALL = 3               # glasbardens tjocklek
-HG_TOP = 2                # ovre bulbens oppna topprad (asteroider faller in ovanifran)
-HG_NECK_Y = 120           # halsens rad (midjan) -- lagt -> stor ovre bulb / mer himmel
-HG_NECK_HW = 8            # halv-bredd pa halsens draneringshal (smalt -> tydlig midja)
-HG_CHAMBER_HW = 112       # OVRE konens maximala halv-bredd (marginal till kanten)
+HG_TOP = 0                # ovre bulbens oppna topprad (asteroider faller in ovanifran)
+HG_NECK_Y = 130           # halsens rad (midjan) -- lagt -> stor ovre bulb / mer himmel
+HG_NECK_HW = 15            # halv-bredd pa halsens draneringshal (smalt -> tydlig midja)
+HG_CHAMBER_HW = 142       # OVRE konens maximala halv-bredd (marginal till kanten)
 HG_THROAT = 1             # rader rak hals kring midjan (kort -> mjuk overgang till tratten)
 # Ovre vaggarna ar en rak, brant kon (lutning < 1 cell/rad) sa ALL sand glider ner
 # genom halsen i stallet for att hopa sig pa ett flackt trattgolv.
@@ -236,15 +236,21 @@ HG_GRILLE_Y = 100          # gallrets rad -- HOGT over midjan dar konen ar bred,
 # Nedre kammaren ar en SMAL, lodrat vaggad lada (inte en vid bulb). Sanden matas in
 # centralt via halsen och lagger sig i en ~56-graders hog; en smal lada far sanden
 # att lavina ut i hornen och fyllas nastan HELT (en vid bulb stannar vid ~50%).
-HG_LOWER_HW = 40          # nedre ladans halv-bredd (mindre = fylls jamnare/fullstandigare)
-HG_LOWER_ROUND = 9        # rader med rundade bottenhorn (mjuk skal i botten)
-HG_LOSE_Y = 120           # rod linje nara ladans topp: nar sanden nar hit ar det slut
-HG_LOSE_FRAC = 0.78       # andel av ladans volym som ska vara fylld -> game over
-                          # (~0.78 = ladan ser full ut; over ~0.8 fylls sista % langsamt)
+HG_LOWER_HW = 60          # nedre ladans halv-bredd (mindre = fylls jamnare/fullstandigare)
+HG_LOWER_ROUND = 30        # rader med rundade bottenhorn (mjuk skal i botten)
+HG_LOSE_Y = 125           # rod linje nara ladans topp: nar sanden nar hit ar det slut
+HG_LOSE_FRAC = 0.65       # andel av ladans volym som ska vara fylld -> game over
+                          # (breddad lada -> sanden lagger sig naturligt i en hog,
+                          # inte perfekt packad i de rundade hornen; simulerat
+                          # (mata in sand kontinuerligt tills den stabiliserar sig)
+                          # visar att den ALDRIG kommer over ~0.717 av full geometrisk
+                          # volym -- ett HG_LOSE_FRAC over det ar ouppnaeligt (raknaren
+                          # fastnar strax under 100%, precis som observerat pa ~91%
+                          # relativt forra vardet 0.78). 0.65 ger marginal under taket.
 COLOR_GRILLE = (120, 128, 140)   # gallret dar tanken kor
 
 # --- Start-/topplistskarm + game over-namninmatning ---
-MAX_NAME_LEN = 10                # max antal tecken i spelarnamnet
+MAX_NAME_LEN = 20                # max antal tecken i spelarnamnet
 HIGHSCORE_WHEEL_STEP = 40        # pixlar per mushjuls-klick nar man scrollar listan for hand
 INSTRUCTIONS_IMAGE = "assets/instructions.png"   # bild som forklarar kontrollerna
 COLOR_TITLE = (255, 210, 90)
