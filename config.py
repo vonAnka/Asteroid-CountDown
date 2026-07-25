@@ -48,7 +48,7 @@ HG_GLASS = 2                    # glasbårdens tjocklek i celler
 # där bilen kör (halsen är för smal för att dränera sand från övre kammaren).
 # Omvandlingströskel + förlustlinje. Att koppla in övre kammaren/dräneringen är
 # en egen designrunda.
-FORCE_FIELD_Y = HG_NECK_Y + 35  # 110
+FORCE_FIELD_Y = HG_NECK_Y + 55  # 110
 
 # --- Färger ---
 COLOR_BG = (18, 18, 22)              # sim-boxens insida (bakom sanden)
@@ -229,14 +229,14 @@ HG_CHAMBER_HW = 112       # OVRE konens maximala halv-bredd (marginal till kante
 HG_THROAT = 1             # rader rak hals kring midjan (kort -> mjuk overgang till tratten)
 # Ovre vaggarna ar en rak, brant kon (lutning < 1 cell/rad) sa ALL sand glider ner
 # genom halsen i stallet for att hopa sig pa ett flackt trattgolv.
-HG_GRILLE_Y = 72          # gallrets rad -- HOGT over midjan dar konen ar bred, sa
+HG_GRILLE_Y = 100          # gallrets rad -- HOGT over midjan dar konen ar bred, sa
                           # tanken far en lang korbar platta (halv-bredd las av dar)
 # Nedre kammaren ar en SMAL, lodrat vaggad lada (inte en vid bulb). Sanden matas in
 # centralt via halsen och lagger sig i en ~56-graders hog; en smal lada far sanden
 # att lavina ut i hornen och fyllas nastan HELT (en vid bulb stannar vid ~50%).
 HG_LOWER_HW = 40          # nedre ladans halv-bredd (mindre = fylls jamnare/fullstandigare)
 HG_LOWER_ROUND = 9        # rader med rundade bottenhorn (mjuk skal i botten)
-HG_LOSE_Y = 131           # rod linje nara ladans topp: nar sanden nar hit ar det slut
+HG_LOSE_Y = 120           # rod linje nara ladans topp: nar sanden nar hit ar det slut
 HG_LOSE_FRAC = 0.78       # andel av ladans volym som ska vara fylld -> game over
                           # (~0.78 = ladan ser full ut; over ~0.8 fylls sista % langsamt)
 COLOR_GRILLE = (120, 128, 140)   # gallret dar tanken kor
